@@ -1,0 +1,28 @@
+{
+  "name": "drinkqr",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.3",
+    "next": "14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.42.1",
+    "@types/node": "^20.11.24",
+    "@types/react": "^18.2.61",
+    "@types/react-dom": "^18.2.19",
+    "qrcode": "^1.5.4",
+    "typescript": "^5.3.3"
+  }
+}

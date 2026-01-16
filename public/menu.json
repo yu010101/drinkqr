@@ -1,0 +1,27 @@
+[
+  {
+    "name": "生ビール",
+    "price": 0,
+    "category": "ビール"
+  },
+  {
+    "name": "ハイボール",
+    "price": 0,
+    "category": "ウイスキー"
+  },
+  {
+    "name": "ウーロン茶",
+    "price": 0,
+    "category": "ソフトドリンク"
+  },
+  {
+    "name": "コーラ",
+    "price": 0,
+    "category": "ソフトドリンク"
+  },
+  {
+    "name": "オレンジジュース",
+    "price": 0,
+    "category": "ソフトドリンク"
+  }
+]

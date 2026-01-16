@@ -1,0 +1,7 @@
+node_modules/
+.next/
+.env
+.env.local
+.DS_Store
+gateway/node_modules/
+gateway/dist/

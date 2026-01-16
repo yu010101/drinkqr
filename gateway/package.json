@@ -1,0 +1,46 @@
+{
+  "name": "drinkqr-print-server",
+  "version": "1.0.0",
+  "description": "DrinkQR 自動印刷サーバー",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.drinkqr.printserver",
+    "productName": "DrinkQR印刷サーバー",
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64"]
+        }
+      ],
+      "identity": null
+    },
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "files": [
+      "main.js",
+      "app.html",
+      "node_modules/**/*"
+    ]
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0"
+  },
+  "devDependencies": {
+    "electron": "^40.0.0",
+    "electron-builder": "^26.4.0"
+  }
+}

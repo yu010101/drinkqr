@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>DrinkQR 印刷サーバー</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: white;
+      min-height: 100vh;
+      padding: 30px;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .header h1 {
+      font-size: 24px;
+      margin-bottom: 5px;
+    }
+    .header p {
+      color: #888;
+      font-size: 14px;
+    }
+    .status {
+      background: #0f3460;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid #1a1a3e;
+    }
+    .status-row:last-child {
+      border-bottom: none;
+    }
+    .status-label {
+      color: #888;
+      font-size: 14px;
+    }
+    .status-value {
+      font-weight: bold;
+      font-size: 16px;
+    }
+    .status-value.connected {
+      color: #4ade80;
+    }
+    .status-value.disconnected {
+      color: #f87171;
+    }
+    .log-container {
+      background: #0a0a1a;
+      border-radius: 12px;
+      padding: 20px;
+      height: 250px;
+      overflow-y: auto;
+    }
+    .log-container h3 {
+      font-size: 14px;
+      color: #888;
+      margin-bottom: 15px;
+    }
+    .log-item {
+      padding: 8px 12px;
+      margin-bottom: 8px;
+      border-radius: 6px;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .log-item.success {
+      background: rgba(74, 222, 128, 0.1);
+      border-left: 3px solid #4ade80;
+    }
+    .log-item.error {
+      background: rgba(248, 113, 113, 0.1);
+      border-left: 3px solid #f87171;
+    }
+    .log-item.info {
+      background: rgba(96, 165, 250, 0.1);
+      border-left: 3px solid #60a5fa;
+    }
+    .log-time {
+      color: #666;
+      font-size: 11px;
+    }
+    .footer {
+      text-align: center;
+      margin-top: 20px;
+      color: #555;
+      font-size: 12px;
+    }
+    .empty-log {
+      color: #555;
+      text-align: center;
+      padding: 40px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🖨️ DrinkQR 印刷サーバー</h1>
+    <p>注文が来ると自動で印刷します</p>
+  </div>
+
+  <div class="status">
+    <div class="status-row">
+      <span class="status-label">接続状態</span>
+      <span id="connectionStatus" class="status-value disconnected">接続中...</span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">本日の印刷数</span>
+      <span id="printCount" class="status-value">0</span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">最終印刷</span>
+      <span id="lastPrint" class="status-value">-</span>
+    </div>
+  </div>
+
+  <div class="log-container">
+    <h3>印刷ログ</h3>
+    <div id="logList">
+      <div class="empty-log">注文を待っています...</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    このウィンドウは閉じても動き続けます（タスクバーに残ります）
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    let printCount = 0;
+    const logList = document.getElementById('logList');
+    const connectionStatus = document.getElementById('connectionStatus');
+    const printCountEl = document.getElementById('printCount');
+    const lastPrintEl = document.getElementById('lastPrint');
+
+    function addLog(message, type = 'info') {
+      // 空のメッセージを削除
+      const emptyLog = logList.querySelector('.empty-log');
+      if (emptyLog) emptyLog.remove();
+
+      const time = new Date().toLocaleTimeString('ja-JP');
+      const item = document.createElement('div');
+      item.className = `log-item ${type}`;
+      item.innerHTML = `
+        <span>${message}</span>
+        <span class="log-time">${time}</span>
+      `;
+      logList.insertBefore(item, logList.firstChild);
+
+      // 最大50件
+      while (logList.children.length > 50) {
+        logList.removeChild(logList.lastChild);
+      }
+    }
+
+    ipcRenderer.on('connection-status', (event, status) => {
+      if (status === 'SUBSCRIBED') {
+        connectionStatus.textContent = '接続済み';
+        connectionStatus.className = 'status-value connected';
+        addLog('サーバーに接続しました', 'success');
+      } else {
+        connectionStatus.textContent = status;
+        connectionStatus.className = 'status-value disconnected';
+      }
+    });
+
+    ipcRenderer.on('new-order', (event, order) => {
+      addLog(`新規注文: #${order.id.slice(-6).toUpperCase()}`, 'info');
+    });
+
+    ipcRenderer.on('print-success', (event, data) => {
+      printCount++;
+      printCountEl.textContent = printCount;
+      lastPrintEl.textContent = new Date().toLocaleTimeString('ja-JP');
+      addLog(`印刷完了: #${data.id.slice(-6).toUpperCase()}`, 'success');
+    });
+
+    ipcRenderer.on('print-error', (event, data) => {
+      addLog(`印刷失敗: #${data.id.slice(-6).toUpperCase()} - ${data.error}`, 'error');
+    });
+
+    ipcRenderer.on('server-started', (event, data) => {
+      addLog('印刷サーバーを起動しました', 'info');
+    });
+  </script>
+</body>
+</html>
