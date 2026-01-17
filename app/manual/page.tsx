@@ -115,31 +115,62 @@ export default function ManualPage() {
                       <div style={{ fontSize: '13px', color: '#666' }}>Mac / Windows 対応（必須）</div>
                     </div>
                   </div>
-                  <p style={{ fontSize: '14px', color: '#666', marginBottom: '15px', lineHeight: '1.6' }}>
+                  <p style={{ fontSize: '14px', color: '#666', marginBottom: '20px', lineHeight: '1.6' }}>
                     注文が入ると自動でプリンターから注文票を印刷するアプリです。<br />
                     店内のPCにインストールして使います。
                   </p>
-                  <div
-                    style={{
-                      padding: '15px 20px',
-                      backgroundColor: '#e9ecef',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                    }}
-                  >
-                    <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>📁 入手方法</div>
-                    <div style={{ color: '#666', lineHeight: '1.6' }}>
-                      初回セットアップ時にUSBメモリまたはAirDropでお渡しします。<br />
-                      再ダウンロードが必要な場合は開発者にお問い合わせください。
-                    </div>
-                  </div>
-                  <div style={{ marginTop: '15px', display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-                    <div style={{ fontSize: '12px', color: '#666', padding: '8px 12px', backgroundColor: '#e9ecef', borderRadius: '6px' }}>
-                      🍎 Mac用: .dmg（約108MB）
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#666', padding: '8px 12px', backgroundColor: '#e9ecef', borderRadius: '6px' }}>
-                      🪟 Windows用: .exe（約84MB）
-                    </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <a
+                      href="https://github.com/yu010101/drinkqr/releases/download/v1.0.0/DrinkQR.-1.0.0-arm64.dmg"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '12px 20px',
+                        backgroundColor: '#007bff',
+                        color: 'white',
+                        textDecoration: 'none',
+                        borderRadius: '8px',
+                        fontWeight: 'bold',
+                      }}
+                    >
+                      <span>🍎 Mac (Apple Silicon M1/M2/M3)</span>
+                      <span style={{ fontSize: '12px', opacity: 0.8 }}>108MB</span>
+                    </a>
+                    <a
+                      href="https://github.com/yu010101/drinkqr/releases/download/v1.0.0/DrinkQR.-1.0.0.dmg"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '12px 20px',
+                        backgroundColor: '#5856d6',
+                        color: 'white',
+                        textDecoration: 'none',
+                        borderRadius: '8px',
+                        fontWeight: 'bold',
+                      }}
+                    >
+                      <span>🍎 Mac (Intel)</span>
+                      <span style={{ fontSize: '12px', opacity: 0.8 }}>112MB</span>
+                    </a>
+                    <a
+                      href="https://github.com/yu010101/drinkqr/releases/download/v1.0.0/DrinkQR.1.0.0.exe"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '12px 20px',
+                        backgroundColor: '#0078d4',
+                        color: 'white',
+                        textDecoration: 'none',
+                        borderRadius: '8px',
+                        fontWeight: 'bold',
+                      }}
+                    >
+                      <span>🪟 Windows</span>
+                      <span style={{ fontSize: '12px', opacity: 0.8 }}>84MB</span>
+                    </a>
                   </div>
                 </div>
 
