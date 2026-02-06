@@ -2,17 +2,27 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { MenuItem, OrderResponse } from '@/packages/shared/types';
+import { createSupabaseBrowserClient } from '@/lib/auth-client';
+
+interface MenuItem {
+  name: string;
+  category: string | null;
+  price: number;
+  is_available: boolean;
+}
 
 interface OrderResult {
   orderId: string;
   items: { name: string; qty: number }[];
 }
 
-export default function TablePage() {
+export default function StoreTablePage() {
   const params = useParams();
+  const storeSlug = params.storeSlug as string;
   const table = params.table as string;
 
+  const [storeName, setStoreName] = useState<string>('');
+  const [storeId, setStoreId] = useState<string | null>(null);
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -23,52 +33,63 @@ export default function TablePage() {
   const [orderResult, setOrderResult] = useState<OrderResult | null>(null);
 
   useEffect(() => {
-    if (!table || table.trim().length === 0) {
+    if (!table || !/^[a-zA-Z0-9]+$/.test(table) || table.length > 10) {
       setError('無効なテーブル名です');
       setLoading(false);
       return;
     }
 
-    if (table.length > 10) {
-      setError('無効なテーブル名です');
-      setLoading(false);
-      return;
-    }
-
-    if (!/^[a-zA-Z0-9]+$/.test(table)) {
-      setError('無効なテーブル名です');
-      setLoading(false);
-      return;
-    }
-  }, [table]);
-
-  useEffect(() => {
-    if (error) return;
-
-    const loadMenu = async () => {
+    const loadStoreAndMenu = async () => {
       try {
-        const response = await fetch('/menu.json');
-        if (!response.ok) {
-          throw new Error('メニューを読み込めませんでした');
-        }
+        const supabase = createSupabaseBrowserClient();
 
-        const data = await response.json();
+        // 店舗情報を取得
+        const { data: store, error: storeError } = await supabase
+          .from('stores')
+          .select('id, name')
+          .eq('slug', storeSlug)
+          .single();
 
-        if (!Array.isArray(data) || data.length === 0) {
-          setError('メニューを読み込めませんでした');
+        if (storeError || !store) {
+          setError('店舗が見つかりません');
+          setLoading(false);
           return;
         }
 
-        setMenu(data);
+        setStoreId(store.id);
+        setStoreName(store.name);
+
+        // メニューを取得
+        const { data: menuData, error: menuError } = await supabase
+          .from('menus')
+          .select('name, category, price, is_available')
+          .eq('store_id', store.id)
+          .eq('is_available', true)
+          .order('sort_order')
+          .order('name');
+
+        if (menuError) {
+          setError('メニューを読み込めませんでした');
+          setLoading(false);
+          return;
+        }
+
+        if (!menuData || menuData.length === 0) {
+          setError('メニューがありません');
+          setLoading(false);
+          return;
+        }
+
+        setMenu(menuData);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'メニューを読み込めませんでした');
+        setError('エラーが発生しました');
       } finally {
         setLoading(false);
       }
     };
 
-    loadMenu();
-  }, [error]);
+    loadStoreAndMenu();
+  }, [storeSlug, table]);
 
   const handleQuantityChange = (itemName: string, qty: number) => {
     if (qty < 0 || qty > 10) return;
@@ -85,6 +106,8 @@ export default function TablePage() {
   };
 
   const handleSubmit = async () => {
+    if (!storeId) return;
+
     const items = Object.entries(orderItems)
       .filter(([_, qty]) => qty > 0 && qty <= 10)
       .map(([name, qty]) => ({ name, qty }));
@@ -100,16 +123,15 @@ export default function TablePage() {
     try {
       const response = await fetch('/api/orders', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          store_id: storeId,
           table,
           items,
         }),
       });
 
-      const data: OrderResponse = await response.json();
+      const data = await response.json();
 
       if (!response.ok || !data.success) {
         throw new Error(data.error || '注文に失敗しました');
@@ -117,7 +139,7 @@ export default function TablePage() {
 
       setOrderResult({
         orderId: data.order_id?.slice(-4).toUpperCase() || '----',
-        items: items,
+        items,
       });
       setShowModal(true);
       setOrderItems({});
@@ -160,9 +182,7 @@ export default function TablePage() {
           />
           <style jsx>{`
             @keyframes spin {
-              to {
-                transform: rotate(360deg);
-              }
+              to { transform: rotate(360deg); }
             }
           `}</style>
           <p style={{ color: '#9a9a9a', fontSize: '14px' }}>読み込み中...</p>
@@ -192,7 +212,7 @@ export default function TablePage() {
             maxWidth: '320px',
           }}
         >
-          <div style={{ fontSize: '32px', marginBottom: '16px' }}>!</div>
+          <div style={{ fontSize: '32px', marginBottom: '16px', color: '#e63946' }}>!</div>
           <p style={{ color: '#e63946', fontSize: '15px' }}>{error}</p>
         </div>
       </div>
@@ -233,7 +253,6 @@ export default function TablePage() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* 角の装飾 */}
             <div style={{ position: 'absolute', top: '-2px', left: '-2px', width: '16px', height: '16px', borderTop: '3px solid #d4af37', borderLeft: '3px solid #d4af37' }} />
             <div style={{ position: 'absolute', top: '-2px', right: '-2px', width: '16px', height: '16px', borderTop: '3px solid #d4af37', borderRight: '3px solid #d4af37' }} />
             <div style={{ position: 'absolute', bottom: '-2px', left: '-2px', width: '16px', height: '16px', borderBottom: '3px solid #d4af37', borderLeft: '3px solid #d4af37' }} />
@@ -338,7 +357,7 @@ export default function TablePage() {
                     marginBottom: '4px',
                   }}
                 >
-                  飲み放題メニュー
+                  {storeName}
                 </div>
                 <h1
                   style={{
@@ -494,7 +513,7 @@ export default function TablePage() {
           </div>
         </main>
 
-        {/* 固定フッター：注文ボタン */}
+        {/* 固定フッター */}
         <div
           style={{
             position: 'fixed',

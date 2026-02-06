@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { createSupabaseBrowserClient } from '@/lib/auth-client';
 
 interface OrderItem {
   name: string;
@@ -13,11 +13,8 @@ interface Order {
   table_name: string;
   items: OrderItem[];
   created_at: string;
+  store_id?: string;
 }
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -26,14 +23,13 @@ export default function AdminOrdersPage() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [autoPrint, setAutoPrint] = useState(true);
   const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
+  const [storeId, setStoreId] = useState<string | null>(null);
   const printQueueRef = useRef<Order[]>([]);
   const isPrintingRef = useRef(false);
 
-  // 通知音を鳴らす
   const playNotificationSound = () => {
     if (!soundEnabled) return;
 
-    // Web Audio APIで通知音を生成
     try {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       const oscillator = audioContext.createOscillator();
@@ -48,7 +44,6 @@ export default function AdminOrdersPage() {
 
       oscillator.start();
 
-      // ピンポン音
       setTimeout(() => { oscillator.frequency.value = 1000; }, 150);
       setTimeout(() => { oscillator.frequency.value = 800; }, 300);
       setTimeout(() => { oscillator.frequency.value = 1000; }, 450);
@@ -61,13 +56,16 @@ export default function AdminOrdersPage() {
     }
   };
 
-  // 注文を取得
-  const fetchOrders = async () => {
+  const fetchOrders = async (currentStoreId: string | null) => {
+    if (!currentStoreId) return;
+
     setLoading(true);
+    const supabase = createSupabaseBrowserClient();
 
     let query = supabase
       .from('orders')
       .select('*')
+      .eq('store_id', currentStoreId)
       .order('created_at', { ascending: false })
       .limit(100);
 
@@ -88,20 +86,48 @@ export default function AdminOrdersPage() {
     setLoading(false);
   };
 
+  // 店舗IDを取得
   useEffect(() => {
-    fetchOrders();
+    const getStore = async () => {
+      const supabase = createSupabaseBrowserClient();
+      const { data: { user } } = await supabase.auth.getUser();
 
-    // リアルタイム購読
+      if (user) {
+        const { data: store } = await supabase
+          .from('stores')
+          .select('id')
+          .eq('owner_id', user.id)
+          .single();
+
+        if (store) {
+          setStoreId(store.id);
+        }
+      }
+    };
+
+    getStore();
+  }, []);
+
+  useEffect(() => {
+    if (!storeId) return;
+
+    fetchOrders(storeId);
+
+    const supabase = createSupabaseBrowserClient();
     const channel = supabase
       .channel('orders_realtime')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'orders' },
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'orders',
+          filter: `store_id=eq.${storeId}`,
+        },
         (payload) => {
           const newOrder = payload.new as Order;
           setOrders((prev) => [newOrder, ...prev]);
           playNotificationSound();
-          // 自動印刷
           if (autoPrint) {
             queuePrint(newOrder);
           }
@@ -112,9 +138,8 @@ export default function AdminOrdersPage() {
     return () => {
       channel.unsubscribe();
     };
-  }, [filter, soundEnabled, autoPrint]);
+  }, [storeId, filter, soundEnabled, autoPrint]);
 
-  // 時刻フォーマット
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleTimeString('ja-JP', {
@@ -123,7 +148,6 @@ export default function AdminOrdersPage() {
     });
   };
 
-  // 日付フォーマット
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString('ja-JP', {
@@ -132,7 +156,6 @@ export default function AdminOrdersPage() {
     });
   };
 
-  // 印刷キューを処理
   const processNextPrint = () => {
     if (isPrintingRef.current || printQueueRef.current.length === 0) return;
 
@@ -142,7 +165,6 @@ export default function AdminOrdersPage() {
 
     setTimeout(() => {
       window.print();
-      // 印刷ダイアログが閉じた後に次を処理
       setTimeout(() => {
         isPrintingRef.current = false;
         setPrintingOrder(null);
@@ -151,15 +173,19 @@ export default function AdminOrdersPage() {
     }, 100);
   };
 
-  // 印刷キューに追加
   const queuePrint = (order: Order) => {
     printQueueRef.current.push(order);
     processNextPrint();
   };
 
-  // 手動印刷
   const handlePrint = (order: Order) => {
     queuePrint(order);
+  };
+
+  const stats = {
+    orderCount: orders.length,
+    totalDrinks: orders.reduce((sum, order) => sum + order.items.reduce((s, item) => s + item.qty, 0), 0),
+    tableCount: new Set(orders.map((o) => o.table_name)).size,
   };
 
   return (
@@ -167,35 +193,42 @@ export default function AdminOrdersPage() {
       {/* 印刷用レイアウト */}
       {printingOrder && (
         <div id="print-area" className="print-only">
-          <div style={{
-            width: '72mm',
-            padding: '5mm',
-            fontFamily: 'monospace',
-            fontSize: '14px',
-          }}>
+          <div
+            style={{
+              width: '72mm',
+              padding: '5mm',
+              fontFamily: 'monospace',
+              fontSize: '14px',
+            }}
+          >
             <div style={{ textAlign: 'center', marginBottom: '10px', fontWeight: 'bold', fontSize: '18px' }}>
               【注文票】
             </div>
-            <div style={{
-              textAlign: 'center',
-              fontSize: '28px',
-              fontWeight: 'bold',
-              border: '2px solid black',
-              padding: '10px',
-              marginBottom: '15px',
-            }}>
+            <div
+              style={{
+                textAlign: 'center',
+                fontSize: '28px',
+                fontWeight: 'bold',
+                border: '2px solid black',
+                padding: '10px',
+                marginBottom: '15px',
+              }}
+            >
               {printingOrder.table_name}
             </div>
             <div style={{ borderTop: '1px dashed black', paddingTop: '10px', marginBottom: '10px' }}>
               {printingOrder.items.map((item, idx) => (
-                <div key={idx} style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  padding: '5px 0',
-                  fontSize: '16px',
-                }}>
+                <div
+                  key={idx}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    padding: '5px 0',
+                    fontSize: '16px',
+                  }}
+                >
                   <span>{item.name}</span>
-                  <span style={{ fontWeight: 'bold' }}>×{item.qty}</span>
+                  <span style={{ fontWeight: 'bold' }}>x{item.qty}</span>
                 </div>
               ))}
             </div>
@@ -208,307 +241,333 @@ export default function AdminOrdersPage() {
       )}
 
       {/* 通常表示 */}
-      <div className="no-print" style={{ padding: '30px' }}>
-        <style jsx global>{`
-          @media print {
-            body * {
-              visibility: hidden;
-            }
-            #print-area, #print-area * {
-              visibility: visible;
-            }
-            #print-area {
-              position: absolute;
-              left: 0;
-              top: 0;
-            }
-            .no-print {
-              display: none !important;
-            }
-          }
-          .print-only {
-            display: none;
-          }
-          @media print {
-            .print-only {
-              display: block !important;
-            }
-          }
-        `}</style>
-
-        <div
+      <div className="no-print" style={{ minHeight: '100vh', background: '#12121a' }} data-store-id={storeId || ''}>
+        {/* ヘッダー */}
+        <header
           style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '25px',
+            background: '#0a0a0c',
+            borderBottom: '1px solid #3a3a4a',
+            padding: '24px 32px',
           }}
         >
-          <h1 style={{ margin: 0, fontSize: '24px' }}>注文一覧</h1>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <button
-              onClick={() => setAutoPrint(!autoPrint)}
-              style={{
-                padding: '8px 16px',
-                border: 'none',
-                borderRadius: '6px',
-                backgroundColor: autoPrint ? '#28a745' : '#6c757d',
-                color: 'white',
-                cursor: 'pointer',
-                fontSize: '14px',
-              }}
-            >
-              {autoPrint ? '🖨️ 自動印刷ON' : '🖨️ 自動印刷OFF'}
-            </button>
-            <button
-              onClick={() => setSoundEnabled(!soundEnabled)}
-              style={{
-                padding: '8px 16px',
-                border: 'none',
-                borderRadius: '6px',
-                backgroundColor: soundEnabled ? '#007bff' : '#6c757d',
-                color: 'white',
-                cursor: 'pointer',
-                fontSize: '14px',
-              }}
-            >
-              {soundEnabled ? '🔔 通知ON' : '🔕 通知OFF'}
-            </button>
-            <button
-              onClick={() => setFilter('today')}
-              style={{
-                padding: '8px 16px',
-                border: 'none',
-                borderRadius: '6px',
-                backgroundColor: filter === 'today' ? '#007bff' : '#e0e0e0',
-                color: filter === 'today' ? 'white' : '#333',
-                cursor: 'pointer',
-                fontSize: '14px',
-              }}
-            >
-              今日
-            </button>
-            <button
-              onClick={() => setFilter('all')}
-              style={{
-                padding: '8px 16px',
-                border: 'none',
-                borderRadius: '6px',
-                backgroundColor: filter === 'all' ? '#007bff' : '#e0e0e0',
-                color: filter === 'all' ? 'white' : '#333',
-                cursor: 'pointer',
-                fontSize: '14px',
-              }}
-            >
-              すべて
-            </button>
-            <button
-              onClick={fetchOrders}
-              style={{
-                padding: '8px 16px',
-                border: 'none',
-                borderRadius: '6px',
-                backgroundColor: '#6c757d',
-                color: 'white',
-                cursor: 'pointer',
-                fontSize: '14px',
-              }}
-            >
-              更新
-            </button>
-          </div>
-        </div>
+          <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+              <div>
+                <div
+                  style={{
+                    fontFamily: "'Shippori Mincho', serif",
+                    fontSize: '11px',
+                    color: '#d4af37',
+                    letterSpacing: '0.2em',
+                    marginBottom: '4px',
+                  }}
+                >
+                  ADMIN
+                </div>
+                <h1
+                  style={{
+                    fontFamily: "'Shippori Mincho', serif",
+                    margin: 0,
+                    fontSize: '24px',
+                    color: '#f5f0e6',
+                    letterSpacing: '0.05em',
+                  }}
+                >
+                  注文一覧
+                </h1>
+              </div>
 
-        {/* 統計 */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: '15px',
-            marginBottom: '25px',
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: 'white',
-              padding: '20px',
-              borderRadius: '8px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-            }}
-          >
-            <div style={{ fontSize: '12px', color: '#666', marginBottom: '5px' }}>
-              注文数
-            </div>
-            <div style={{ fontSize: '28px', fontWeight: 'bold' }}>
-              {orders.length}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => setAutoPrint(!autoPrint)}
+                  style={{
+                    padding: '10px 16px',
+                    border: autoPrint ? '1px solid #d4af37' : '1px solid #3a3a4a',
+                    background: autoPrint ? 'rgba(212, 175, 55, 0.1)' : 'transparent',
+                    color: autoPrint ? '#d4af37' : '#9a9a9a',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontFamily: "'Zen Kaku Gothic New', sans-serif",
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  自動印刷 {autoPrint ? 'ON' : 'OFF'}
+                </button>
+                <button
+                  onClick={() => setSoundEnabled(!soundEnabled)}
+                  style={{
+                    padding: '10px 16px',
+                    border: soundEnabled ? '1px solid #d4af37' : '1px solid #3a3a4a',
+                    background: soundEnabled ? 'rgba(212, 175, 55, 0.1)' : 'transparent',
+                    color: soundEnabled ? '#d4af37' : '#9a9a9a',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontFamily: "'Zen Kaku Gothic New', sans-serif",
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  通知音 {soundEnabled ? 'ON' : 'OFF'}
+                </button>
+                <div style={{ display: 'flex', border: '1px solid #3a3a4a' }}>
+                  <button
+                    onClick={() => setFilter('today')}
+                    style={{
+                      padding: '10px 16px',
+                      border: 'none',
+                      background: filter === 'today' ? '#d4af37' : 'transparent',
+                      color: filter === 'today' ? '#0a0a0c' : '#9a9a9a',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontFamily: "'Zen Kaku Gothic New', sans-serif",
+                      fontWeight: filter === 'today' ? 700 : 400,
+                    }}
+                  >
+                    今日
+                  </button>
+                  <button
+                    onClick={() => setFilter('all')}
+                    style={{
+                      padding: '10px 16px',
+                      border: 'none',
+                      borderLeft: '1px solid #3a3a4a',
+                      background: filter === 'all' ? '#d4af37' : 'transparent',
+                      color: filter === 'all' ? '#0a0a0c' : '#9a9a9a',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontFamily: "'Zen Kaku Gothic New', sans-serif",
+                      fontWeight: filter === 'all' ? 700 : 400,
+                    }}
+                  >
+                    すべて
+                  </button>
+                </div>
+                <button
+                  onClick={() => fetchOrders(storeId)}
+                  style={{
+                    padding: '10px 16px',
+                    border: '1px solid #3a3a4a',
+                    background: 'transparent',
+                    color: '#9a9a9a',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontFamily: "'Zen Kaku Gothic New', sans-serif",
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  更新
+                </button>
+              </div>
             </div>
           </div>
-          <div
-            style={{
-              backgroundColor: 'white',
-              padding: '20px',
-              borderRadius: '8px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-            }}
-          >
-            <div style={{ fontSize: '12px', color: '#666', marginBottom: '5px' }}>
-              合計杯数
-            </div>
-            <div style={{ fontSize: '28px', fontWeight: 'bold' }}>
-              {orders.reduce(
-                (sum, order) =>
-                  sum + order.items.reduce((s, item) => s + item.qty, 0),
-                0
-              )}
-            </div>
-          </div>
-          <div
-            style={{
-              backgroundColor: 'white',
-              padding: '20px',
-              borderRadius: '8px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-            }}
-          >
-            <div style={{ fontSize: '12px', color: '#666', marginBottom: '5px' }}>
-              テーブル数
-            </div>
-            <div style={{ fontSize: '28px', fontWeight: 'bold' }}>
-              {new Set(orders.map((o) => o.table_name)).size}
-            </div>
-          </div>
-        </div>
+        </header>
 
-        {/* 使い方ヒント */}
-        <div
-          style={{
-            backgroundColor: '#e7f3ff',
-            padding: '15px 20px',
-            borderRadius: '8px',
-            marginBottom: '20px',
-            fontSize: '14px',
-            color: '#0056b3',
-          }}
-        >
-          💡 この画面を開いたままにしておくと、新規注文が来たら自動で印刷ダイアログが開きます。印刷ダイアログが出たらEnterキーで印刷できます。
-        </div>
-
-        {/* 注文リスト */}
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-            読み込み中...
-          </div>
-        ) : orders.length === 0 ? (
-          <div
-            style={{
-              textAlign: 'center',
-              padding: '60px',
-              backgroundColor: 'white',
-              borderRadius: '8px',
-              color: '#666',
-            }}
-          >
-            注文がありません
-          </div>
-        ) : (
+        <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '32px' }}>
+          {/* 統計 */}
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-              gap: '15px',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: '16px',
+              marginBottom: '32px',
             }}
           >
-            {orders.map((order, index) => (
+            {[
+              { label: '注文数', value: stats.orderCount },
+              { label: '合計杯数', value: stats.totalDrinks },
+              { label: 'テーブル数', value: stats.tableCount },
+            ].map((stat) => (
               <div
-                key={order.id}
+                key={stat.label}
                 style={{
-                  backgroundColor: index === 0 ? '#fffde7' : 'white',
-                  borderRadius: '8px',
-                  padding: '20px',
-                  boxShadow: index === 0
-                    ? '0 0 0 3px #ffc107, 0 2px 8px rgba(0,0,0,0.15)'
-                    : '0 1px 3px rgba(0,0,0,0.1)',
+                  background: '#1c1c26',
+                  border: '1px solid #2a2a36',
+                  padding: '24px',
                 }}
               >
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: '15px',
-                  }}
-                >
-                  <div
-                    style={{
-                      backgroundColor: '#007bff',
-                      color: 'white',
-                      padding: '8px 16px',
-                      borderRadius: '6px',
-                      fontWeight: 'bold',
-                      fontSize: '18px',
-                    }}
-                  >
-                    {order.table_name}
-                  </div>
-                  <div style={{ fontSize: '13px', color: '#666' }}>
-                    {filter === 'all' && (
-                      <span style={{ marginRight: '8px' }}>
-                        {formatDate(order.created_at)}
-                      </span>
-                    )}
-                    {formatTime(order.created_at)}
-                  </div>
-                </div>
-                <div style={{ marginBottom: '15px' }}>
-                  {order.items.map((item, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        padding: '8px 0',
-                        borderBottom:
-                          idx < order.items.length - 1
-                            ? '1px solid #eee'
-                            : 'none',
-                        fontSize: '15px',
-                      }}
-                    >
-                      <span>{item.name}</span>
-                      <span style={{ fontWeight: 'bold' }}>×{item.qty}</span>
-                    </div>
-                  ))}
+                <div style={{ fontSize: '12px', color: '#6a6a6a', marginBottom: '8px', letterSpacing: '0.1em' }}>
+                  {stat.label}
                 </div>
                 <div
                   style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
+                    fontFamily: "'Shippori Mincho', serif",
+                    fontSize: '36px',
+                    color: '#d4af37',
+                    fontWeight: 600,
                   }}
                 >
-                  <div style={{ fontSize: '11px', color: '#999' }}>
-                    #{order.id.slice(-6).toUpperCase()}
-                  </div>
-                  <button
-                    onClick={() => handlePrint(order)}
-                    style={{
-                      padding: '8px 20px',
-                      border: 'none',
-                      borderRadius: '6px',
-                      backgroundColor: '#28a745',
-                      color: 'white',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      fontWeight: 'bold',
-                    }}
-                  >
-                    🖨️ 印刷
-                  </button>
+                  {stat.value}
                 </div>
               </div>
             ))}
           </div>
-        )}
+
+          {/* ヒント */}
+          <div
+            style={{
+              background: 'rgba(212, 175, 55, 0.05)',
+              border: '1px solid rgba(212, 175, 55, 0.2)',
+              padding: '16px 20px',
+              marginBottom: '24px',
+              fontSize: '13px',
+              color: '#c9b896',
+            }}
+          >
+            この画面を開いたままにしておくと、新規注文が来たら自動で印刷ダイアログが開きます。
+          </div>
+
+          {/* 注文リスト */}
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '60px', color: '#6a6a6a' }}>
+              <div
+                style={{
+                  width: '40px',
+                  height: '40px',
+                  border: '3px solid #3a3a4a',
+                  borderTopColor: '#d4af37',
+                  borderRadius: '50%',
+                  margin: '0 auto 16px',
+                  animation: 'spin 1s linear infinite',
+                }}
+              />
+              <style jsx>{`
+                @keyframes spin {
+                  to { transform: rotate(360deg); }
+                }
+              `}</style>
+              読み込み中...
+            </div>
+          ) : orders.length === 0 ? (
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '80px 40px',
+                background: '#1c1c26',
+                border: '1px solid #2a2a36',
+                color: '#6a6a6a',
+              }}
+            >
+              <div style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.5 }}>—</div>
+              <div>注文がありません</div>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                gap: '16px',
+              }}
+            >
+              {orders.map((order, index) => (
+                <div
+                  key={order.id}
+                  style={{
+                    background: index === 0 ? '#1c1c26' : '#161620',
+                    border: index === 0 ? '2px solid #d4af37' : '1px solid #2a2a36',
+                    padding: '24px',
+                    position: 'relative',
+                  }}
+                >
+                  {index === 0 && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '-1px',
+                        right: '16px',
+                        background: '#d4af37',
+                        color: '#0a0a0c',
+                        padding: '4px 12px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        letterSpacing: '0.05em',
+                      }}
+                    >
+                      NEW
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '20px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        background: '#d4af37',
+                        color: '#0a0a0c',
+                        padding: '8px 20px',
+                        fontFamily: "'Shippori Mincho', serif",
+                        fontWeight: 700,
+                        fontSize: '20px',
+                        letterSpacing: '0.05em',
+                      }}
+                    >
+                      {order.table_name}
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#6a6a6a' }}>
+                      {filter === 'all' && (
+                        <span style={{ marginRight: '8px' }}>{formatDate(order.created_at)}</span>
+                      )}
+                      {formatTime(order.created_at)}
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: '20px' }}>
+                    {order.items.map((item, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          padding: '10px 0',
+                          borderBottom: idx < order.items.length - 1 ? '1px solid #2a2a36' : 'none',
+                          fontSize: '14px',
+                        }}
+                      >
+                        <span style={{ color: '#f5f0e6' }}>{item.name}</span>
+                        <span style={{ color: '#d4af37', fontWeight: 700 }}>x{item.qty}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <div style={{ fontSize: '11px', color: '#4a4a4a', fontFamily: 'monospace' }}>
+                      #{order.id.slice(-6).toUpperCase()}
+                    </div>
+                    <button
+                      onClick={() => handlePrint(order)}
+                      style={{
+                        padding: '10px 24px',
+                        border: '1px solid #3a3a4a',
+                        background: 'transparent',
+                        color: '#9a9a9a',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        fontFamily: "'Zen Kaku Gothic New', sans-serif",
+                        transition: 'all 0.2s',
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.borderColor = '#d4af37';
+                        e.currentTarget.style.color = '#d4af37';
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.borderColor = '#3a3a4a';
+                        e.currentTarget.style.color = '#9a9a9a';
+                      }}
+                    >
+                      印刷
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </main>
       </div>
     </>
   );

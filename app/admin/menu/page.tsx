@@ -3,9 +3,11 @@
 import { useEffect, useState } from 'react';
 
 interface MenuItem {
+  id?: string;
   name: string;
   price?: number;
   category?: string;
+  available?: boolean;
 }
 
 export default function MenuEditPage() {
@@ -14,7 +16,6 @@ export default function MenuEditPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // メニュー取得
   const fetchMenu = async () => {
     setLoading(true);
     try {
@@ -33,7 +34,6 @@ export default function MenuEditPage() {
     fetchMenu();
   }, []);
 
-  // メニュー保存
   const handleSave = async () => {
     setSaving(true);
     setMessage(null);
@@ -47,11 +47,12 @@ export default function MenuEditPage() {
 
       if (res.ok) {
         setMessage({ type: 'success', text: '保存しました' });
+        fetchMenu();
       } else {
         const data = await res.json();
         setMessage({ type: 'error', text: data.error || '保存に失敗しました' });
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: '保存に失敗しました' });
     }
 
@@ -59,26 +60,22 @@ export default function MenuEditPage() {
     setTimeout(() => setMessage(null), 3000);
   };
 
-  // アイテム更新
-  const updateItem = (index: number, field: keyof MenuItem, value: string | number) => {
+  const updateItem = (index: number, field: keyof MenuItem, value: string | number | boolean) => {
     const newMenu = [...menu];
     newMenu[index] = { ...newMenu[index], [field]: value };
     setMenu(newMenu);
   };
 
-  // アイテム追加
   const addItem = () => {
-    setMenu([...menu, { name: '', price: 0, category: '' }]);
+    setMenu([...menu, { name: '', price: 0, category: '', available: true }]);
   };
 
-  // アイテム削除
   const removeItem = (index: number) => {
     if (confirm('このアイテムを削除しますか？')) {
       setMenu(menu.filter((_, i) => i !== index));
     }
   };
 
-  // 順序変更
   const moveItem = (index: number, direction: 'up' | 'down') => {
     const newMenu = [...menu];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
@@ -87,37 +84,59 @@ export default function MenuEditPage() {
     setMenu(newMenu);
   };
 
-  // カテゴリ一覧
   const categories = [...new Set(menu.map((item) => item.category).filter(Boolean))];
 
   if (loading) {
     return (
-      <div style={{ padding: '30px', textAlign: 'center', color: '#666' }}>
+      <div
+        style={{
+          padding: '60px',
+          textAlign: 'center',
+          color: '#6a6a6a',
+          fontFamily: "'Zen Kaku Gothic New', sans-serif",
+        }}
+      >
         読み込み中...
       </div>
     );
   }
 
   return (
-    <div style={{ padding: '30px' }}>
+    <div style={{ padding: '40px', maxWidth: '1200px', margin: '0 auto' }}>
+      {/* ヘッダー */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: '25px',
+          marginBottom: '32px',
         }}
       >
-        <h1 style={{ margin: 0, fontSize: '24px' }}>メニュー編集</h1>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <div>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: '24px',
+              fontWeight: 600,
+              color: '#f5f0e6',
+              fontFamily: "'Shippori Mincho', serif",
+            }}
+          >
+            メニュー編集
+          </h1>
+          <p style={{ margin: '8px 0 0', fontSize: '13px', color: '#6a6a6a' }}>
+            {menu.length} 件のメニュー
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
           {message && (
             <span
               style={{
-                padding: '8px 16px',
-                borderRadius: '6px',
-                fontSize: '14px',
-                backgroundColor: message.type === 'success' ? '#d4edda' : '#f8d7da',
-                color: message.type === 'success' ? '#155724' : '#721c24',
+                padding: '10px 16px',
+                fontSize: '13px',
+                background: message.type === 'success' ? 'rgba(212, 175, 55, 0.15)' : 'rgba(230, 57, 70, 0.15)',
+                color: message.type === 'success' ? '#d4af37' : '#e63946',
+                border: `1px solid ${message.type === 'success' ? '#d4af37' : '#e63946'}`,
               }}
             >
               {message.text}
@@ -126,13 +145,14 @@ export default function MenuEditPage() {
           <button
             onClick={addItem}
             style={{
-              padding: '8px 16px',
-              border: 'none',
-              borderRadius: '6px',
-              backgroundColor: '#28a745',
-              color: 'white',
+              padding: '12px 20px',
+              border: '1px solid #d4af37',
+              background: 'transparent',
+              color: '#d4af37',
               cursor: 'pointer',
-              fontSize: '14px',
+              fontSize: '13px',
+              fontFamily: "'Zen Kaku Gothic New', sans-serif",
+              transition: 'all 0.2s',
             }}
           >
             + 追加
@@ -141,36 +161,38 @@ export default function MenuEditPage() {
             onClick={handleSave}
             disabled={saving}
             style={{
-              padding: '8px 20px',
+              padding: '12px 24px',
               border: 'none',
-              borderRadius: '6px',
-              backgroundColor: saving ? '#ccc' : '#007bff',
-              color: 'white',
+              background: saving ? '#3a3a4a' : 'linear-gradient(135deg, #d4af37, #c9a227)',
+              color: saving ? '#6a6a6a' : '#0a0a0c',
               cursor: saving ? 'not-allowed' : 'pointer',
-              fontSize: '14px',
-              fontWeight: 'bold',
+              fontSize: '13px',
+              fontWeight: 600,
+              fontFamily: "'Zen Kaku Gothic New', sans-serif",
+              transition: 'all 0.2s',
             }}
           >
-            {saving ? '保存中...' : '保存'}
+            {saving ? '保存中...' : '保存する'}
           </button>
         </div>
-      </div>
-
-      <div style={{ marginBottom: '15px', fontSize: '14px', color: '#666' }}>
-        {menu.length} 件のメニュー
       </div>
 
       {/* メニューリスト */}
       <div
         style={{
-          backgroundColor: 'white',
-          borderRadius: '8px',
-          overflow: 'hidden',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+          background: '#1c1c26',
+          border: '1px solid #2a2a36',
         }}
       >
         {menu.length === 0 ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
+          <div
+            style={{
+              padding: '60px',
+              textAlign: 'center',
+              color: '#6a6a6a',
+              fontFamily: "'Zen Kaku Gothic New', sans-serif",
+            }}
+          >
             メニューがありません。「+ 追加」ボタンで追加してください。
           </div>
         ) : (
@@ -180,22 +202,23 @@ export default function MenuEditPage() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '15px',
-                padding: '15px 20px',
-                borderBottom: index < menu.length - 1 ? '1px solid #eee' : 'none',
+                gap: '16px',
+                padding: '20px 24px',
+                borderBottom: index < menu.length - 1 ? '1px solid #2a2a36' : 'none',
+                opacity: item.available === false ? 0.5 : 1,
               }}
             >
-              {/* 順序変更ボタン */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              {/* 順序変更 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <button
                   onClick={() => moveItem(index, 'up')}
                   disabled={index === 0}
                   style={{
-                    width: '24px',
-                    height: '20px',
-                    border: '1px solid #ddd',
-                    borderRadius: '3px',
-                    backgroundColor: index === 0 ? '#f5f5f5' : 'white',
+                    width: '28px',
+                    height: '24px',
+                    border: '1px solid #3a3a4a',
+                    background: index === 0 ? '#1c1c26' : '#2a2a36',
+                    color: index === 0 ? '#3a3a4a' : '#9a9a9a',
                     cursor: index === 0 ? 'not-allowed' : 'pointer',
                     fontSize: '10px',
                   }}
@@ -206,11 +229,11 @@ export default function MenuEditPage() {
                   onClick={() => moveItem(index, 'down')}
                   disabled={index === menu.length - 1}
                   style={{
-                    width: '24px',
-                    height: '20px',
-                    border: '1px solid #ddd',
-                    borderRadius: '3px',
-                    backgroundColor: index === menu.length - 1 ? '#f5f5f5' : 'white',
+                    width: '28px',
+                    height: '24px',
+                    border: '1px solid #3a3a4a',
+                    background: index === menu.length - 1 ? '#1c1c26' : '#2a2a36',
+                    color: index === menu.length - 1 ? '#3a3a4a' : '#9a9a9a',
                     cursor: index === menu.length - 1 ? 'not-allowed' : 'pointer',
                     fontSize: '10px',
                   }}
@@ -221,7 +244,15 @@ export default function MenuEditPage() {
 
               {/* 商品名 */}
               <div style={{ flex: 2 }}>
-                <label style={{ fontSize: '11px', color: '#666', display: 'block', marginBottom: '4px' }}>
+                <label
+                  style={{
+                    fontSize: '10px',
+                    color: '#6a6a6a',
+                    display: 'block',
+                    marginBottom: '6px',
+                    letterSpacing: '0.05em',
+                  }}
+                >
                   商品名
                 </label>
                 <input
@@ -231,17 +262,27 @@ export default function MenuEditPage() {
                   placeholder="商品名を入力"
                   style={{
                     width: '100%',
-                    padding: '8px 10px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
+                    padding: '10px 12px',
+                    border: '1px solid #3a3a4a',
+                    background: '#0a0a0c',
+                    color: '#f5f0e6',
                     fontSize: '14px',
+                    fontFamily: "'Zen Kaku Gothic New', sans-serif",
                   }}
                 />
               </div>
 
               {/* カテゴリ */}
               <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '11px', color: '#666', display: 'block', marginBottom: '4px' }}>
+                <label
+                  style={{
+                    fontSize: '10px',
+                    color: '#6a6a6a',
+                    display: 'block',
+                    marginBottom: '6px',
+                    letterSpacing: '0.05em',
+                  }}
+                >
                   カテゴリ
                 </label>
                 <input
@@ -252,10 +293,12 @@ export default function MenuEditPage() {
                   list={`categories-${index}`}
                   style={{
                     width: '100%',
-                    padding: '8px 10px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
+                    padding: '10px 12px',
+                    border: '1px solid #3a3a4a',
+                    background: '#0a0a0c',
+                    color: '#f5f0e6',
                     fontSize: '14px',
+                    fontFamily: "'Zen Kaku Gothic New', sans-serif",
                   }}
                 />
                 <datalist id={`categories-${index}`}>
@@ -267,7 +310,15 @@ export default function MenuEditPage() {
 
               {/* 価格 */}
               <div style={{ width: '100px' }}>
-                <label style={{ fontSize: '11px', color: '#666', display: 'block', marginBottom: '4px' }}>
+                <label
+                  style={{
+                    fontSize: '10px',
+                    color: '#6a6a6a',
+                    display: 'block',
+                    marginBottom: '6px',
+                    letterSpacing: '0.05em',
+                  }}
+                >
                   価格
                 </label>
                 <input
@@ -277,27 +328,59 @@ export default function MenuEditPage() {
                   min={0}
                   style={{
                     width: '100%',
-                    padding: '8px 10px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
+                    padding: '10px 12px',
+                    border: '1px solid #3a3a4a',
+                    background: '#0a0a0c',
+                    color: '#f5f0e6',
                     fontSize: '14px',
                     textAlign: 'right',
+                    fontFamily: "'Zen Kaku Gothic New', sans-serif",
                   }}
                 />
               </div>
 
-              {/* 削除ボタン */}
+              {/* 提供可否 */}
+              <div style={{ width: '80px', textAlign: 'center' }}>
+                <label
+                  style={{
+                    fontSize: '10px',
+                    color: '#6a6a6a',
+                    display: 'block',
+                    marginBottom: '6px',
+                    letterSpacing: '0.05em',
+                  }}
+                >
+                  提供
+                </label>
+                <button
+                  onClick={() => updateItem(index, 'available', !item.available)}
+                  style={{
+                    padding: '8px 12px',
+                    border: '1px solid',
+                    borderColor: item.available !== false ? '#d4af37' : '#3a3a4a',
+                    background: item.available !== false ? 'rgba(212, 175, 55, 0.15)' : 'transparent',
+                    color: item.available !== false ? '#d4af37' : '#6a6a6a',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    fontFamily: "'Zen Kaku Gothic New', sans-serif",
+                  }}
+                >
+                  {item.available !== false ? '可' : '停止'}
+                </button>
+              </div>
+
+              {/* 削除 */}
               <button
                 onClick={() => removeItem(index)}
                 style={{
-                  width: '36px',
-                  height: '36px',
-                  border: 'none',
-                  borderRadius: '4px',
-                  backgroundColor: '#f8d7da',
-                  color: '#721c24',
+                  width: '40px',
+                  height: '40px',
+                  border: '1px solid #3a3a4a',
+                  background: 'transparent',
+                  color: '#e63946',
                   cursor: 'pointer',
-                  fontSize: '16px',
+                  fontSize: '18px',
+                  transition: 'all 0.2s',
                 }}
               >
                 ×
@@ -310,16 +393,16 @@ export default function MenuEditPage() {
       {/* 注意書き */}
       <div
         style={{
-          marginTop: '20px',
-          padding: '15px',
-          backgroundColor: '#fff3cd',
-          borderRadius: '6px',
+          marginTop: '24px',
+          padding: '16px 20px',
+          background: 'rgba(212, 175, 55, 0.1)',
+          border: '1px solid rgba(212, 175, 55, 0.3)',
           fontSize: '13px',
-          color: '#856404',
+          color: '#d4af37',
+          fontFamily: "'Zen Kaku Gothic New', sans-serif",
         }}
       >
-        <strong>注意:</strong> メニューを保存すると、すぐにお客様の画面に反映されます。
-        本番環境で保存する場合は、Vercelへの再デプロイが必要です。
+        <strong>注意:</strong> 保存するとお客様の注文画面に即時反映されます。
       </div>
     </div>
   );
