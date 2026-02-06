@@ -71,7 +71,8 @@ export async function GET() {
     return NextResponse.json(formattedMenus);
   } catch (error) {
     console.error('Error reading menu:', error);
-    return NextResponse.json({ error: 'メニューの読み込みに失敗しました' }, { status: 500 });
+    const message = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: 'メニューの読み込みに失敗しました', debug: message }, { status: 500 });
   }
 }
 
